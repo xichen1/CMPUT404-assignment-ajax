@@ -7,6 +7,8 @@
     <meta name="viewport" content="width=device-width" />
     <meta name="license" content="
         Copyright 2013 Abram Hindle
+
+        Copyright 2021 Xichen Pan
         
         Licensed under the Apache License, Version 2.0 (the "License");
         you may not use this file except in compliance with the License.
@@ -40,6 +42,7 @@ function sendJSONXMLHTTPRequest(url, objects, callback) {
                 if (xhr.status==200) {
                     //XXX: parse some JSON from the request!
                     //XXX: Pass the data to the callback!
+                    callback(JSON.parse(xhr.responseText));
                 }
             } 
             catch(e) {
@@ -50,23 +53,58 @@ function sendJSONXMLHTTPRequest(url, objects, callback) {
     //XXX: POST to a URL
     //XXX: set the mimetype and the accept headers!
     // Remember to use application/json !
+    // Reference: https://developer.mozilla.org/en-US/docs/Web/API/XMLHttpRequest/send
+    // https://stackoverflow.com/a/39519299
+    const data = JSON.stringify(objects);
+    xhr.open("POST", url);
+    xhr.setRequestHeader("Accept", "application/json");
+    xhr.setRequestHeader("Content-Type", "application/json");
+    xhr.send(data);
 }
 
 
 world = {};
 
-//XXX: TODO Make this prettier!
-function drawCircle(context,entity) {
+// Reference: https://riptutorial.com/html5-canvas/example/18135/stars
+function drawStar(context,entity) {
     with(context) {
         beginPath();              
         lineWidth = 3;
         var x = entity["x"];
         var y = entity["y"];
-        //moveTo(x,y);
-        fillStyle = entity["colour"];
-        strokeStyle = fillStyle;
-        arc(x, y, (entity["radius"])?entity["radius"]:50, 0, 2.0 * Math.PI, false);  
-        stroke();                                
+        for (var i=0; i < 2*8+1; i++) {
+            var r = (entity["radius"])?entity["radius"]:60;
+            if (i%2 !== 0) {
+                r = r/2;
+            }
+            var a = Math.PI * i/8;
+            lineTo(x + r*Math.sin(a), y + r*Math.cos(a));
+        };
+        closePath();
+        fillStyle=entity["colour"];
+        strokeStyle=fillStyle;
+        fill();                              
+    }
+}
+
+// Emoji reference: https://stackoverflow.com/questions/57245470/html5-canvas-image-data-empty-after-drawing-an-emoji-with-large-font-size-on-c?rq=1
+function drawEmoji(context,entity) {
+    with(context) {
+        const text = "😀,😁,😂,😃,😄,😅,😆,😇,😉,😊,😋,😌,😍,😎,😏,😐,😑,😒,😓,😔,😕,😖,😗,😘,😙,😚,😛,😜,😝,😞,😟,😠,👹,👺,👻,👼,🚜,👾,👿,💀".split(",");
+        font = '40px serif';
+        var x = entity["x"];
+        var y = entity["y"];
+        var emoji = text[(x+y) % text.length];
+        fillText(emoji, entity["x"], entity["y"]);
+    }
+}
+
+//XXX: TODO Make this prettier!
+function drawShape(context,entity) {
+    if (entity["type"] === "star") {
+        drawStar(context,entity);
+    } else if (entity["type"] === "emoji") {
+        drawEmoji(context,entity);
     }
 }
 
@@ -75,7 +113,7 @@ function prepEntity(entity) {
         entity["colour"] = "#FF0000";
     }
     if (!entity["radius"]) {
-        entity["radius"] = 50;
+        entity["radius"] = 60;
     }
     return entity;
 }
@@ -94,7 +132,7 @@ function renderFrame() {
     clearFrame();
     for (var key in world) {
         var entity = world[key];
-        drawCircle(context,prepEntity(entity));
+        drawShape(context,prepEntity(entity));
     }
 }
 
@@ -138,7 +176,9 @@ function addEntity(entity, data) {
     world[entity] = data;
     drawNextFrame(); // (but should we?)
     //XXX: Send a XHTML Request that updates the entity you just  modified!
-
+    sendJSONXMLHTTPRequest("/entity/"+entity, data, (e) => {
+        console.log(e);
+    });
 }
 
 var counter = 0;
@@ -247,21 +287,25 @@ mouse = (function() {
 // Add the application specific mouse listeners!
 //XXX: TODO Make these prettier!
 mouse.mousedowners.push(function(x,y,clicked,e) {
-    addEntityWithoutName({'x':x,'y':y,'colour':'blue'});
+    addEntityWithoutName({'x':x,'y':y,'colour':'#096148','type':'star'});
 });
 
 mouse.mouseuppers.push(function(x,y,clicked,e) {
-    addEntityWithoutName({'x':x,'y':y,'colour':'red'});
+    addEntityWithoutName({'x':x,'y':y,'colour':'#81C7D4','type':'star'});
 });
 
 mouse.mousedraggers.push(function(x,y,clicked,e) {
     addEntityWithoutName({'x':x,'y':y,'colour':'green',
-                          'radius':10});
+                          'radius':10,'type':'emoji'});
 });
 
 
 function update() {
     //XXX: TODO Get the world from the webservice using a XMLHTTPRequest
+    sendJSONXMLHTTPRequest('/world', null, (w) => {
+        world = w;
+    });
+    drawNextFrame();
     drawFrame();
 }
 
